@@ -4,11 +4,11 @@ transformers
 rtmlib
 onnxruntime
 opencv-python-headless
-numpy==VERSIÓN
+numpy==2.5.5
 pandas
 pillow
 joblib
 # ⚠️ Pon aquí la MISMA versión de scikit-learn con la que entrenaste (en el cuaderno: import sklearn; sklearn.__version__)
-scikit-learn==VERSIÓN
+scikit-learn==1.9.1
 streamlit
 huggingface_hub
