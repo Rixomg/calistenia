@@ -43,6 +43,7 @@ TOL_LINEA,  PESO_LINEA  = 1, 3      # línea hombro-cadera-pies
 TOL_CODO,   PESO_CODO   = 1, 3      # codo recto
 TOL_CODO90, PESO_CODO90 = 3, 3      # codo a 90° (90 hold)
 TOL_CABEZA, PESO_CABEZA = 20, 1     # cabeza alineada: mucho margen y poco peso
+TOL_RODILLA, PESO_RODILLA = 10, 3   # rodilla estirada (straddle, full, 90 hold, lean)
 MAX_EXTRA = 25            # a partir de tolerancia + esto, ese criterio vale 0
 DECIMALES = 1
 PROG_0, PROG_100 = 90, 150          # progresión adv tuck: ángulo de cadera al 0 % y al 100 %
@@ -58,10 +59,10 @@ CONSEJOS = {
     "codo doblado": "Bloquea los codos: brazos totalmente rectos.",
     "codo no a 90°": "Codos a 90°: ni más abierto ni más cerrado.",
     "cabeza fuera de línea": "Cabeza neutra, en línea con la espalda.",
+    "rodilla doblada": "Estira las piernas del todo: rodillas bloqueadas y puntas estiradas.",
     "sin protracción": "Empuja el suelo y separa las escápulas (protracción): la espalda alta debe redondearse.",
 }
 
-FAMILIAS_APP = ("planche", "fl")    # de momento la app solo analiza estas familias
 DEVICE = "cpu"
 
 # =====================================================================
@@ -269,13 +270,14 @@ LINEA = ("linea", ["hombro", "cadera", "tobillo"], TOL_LINEA, PESO_LINEA, "líne
 CODO = ("codo", ["hombro", "codo", "muneca"], TOL_CODO, PESO_CODO, "codo doblado")
 CODO90 = ("codo90", ["hombro", "codo", "muneca"], TOL_CODO90, PESO_CODO90, "codo no a 90°")
 CABEZA_ = ("linea", ["cabeza", "hombro", "cadera"], TOL_CABEZA, PESO_CABEZA, "cabeza fuera de línea")
+RODILLA = ("linea", ["cadera", "rodilla", "tobillo"], TOL_RODILLA, PESO_RODILLA, "rodilla doblada")
 
 
 def criterios(skill):
     if skill == "hold_90":
-        return [CODO90, HORIZ, LINEA, CABEZA_]
+        return [CODO90, HORIZ, LINEA, RODILLA, CABEZA_]
     if skill.startswith("planche_lean"):
-        return [CODO, LINEA, CABEZA_]
+        return [CODO, LINEA, RODILLA, CABEZA_]
     if "_" not in skill:
         return []
     piernas, familia = skill.rsplit("_", 1)
@@ -283,7 +285,7 @@ def criterios(skill):
         return []
     c = [HORIZ]
     if piernas not in ("tuck", "adv_tuck"):
-        c.append(LINEA)
+        c += [LINEA, RODILLA]
     if familia == "planche":
         c += [CODO, CABEZA_]
     return c
@@ -416,7 +418,7 @@ def consejos(fallos, cadera_alta, prot):
 
 
 def soportada(skill):
-    return skill is not None and "_" in skill and skill.rsplit("_", 1)[1] in FAMILIAS_APP
+    return skill is not None and bool(criterios(skill))
 
 
 def top3(probs):
@@ -437,7 +439,7 @@ def analizar_foto(img_bgr):
                seguro=pc.max() >= UMBRAL_CONF, soportada=soportada(skill),
                forma=None, progresion=None, protraccion=None, fallos={}, consejos=[],
                imagen=cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB))
-    if res["soportada"] and criterios(skill):
+    if res["seguro"] and res["soportada"]:
         forma, fallos, prog, cadera_alta = evaluar_forma(skill, p, s)
         prot = predecir_protraccion(img_bgr, p, s) if es_planche(skill) else None
         if prot is not None:
@@ -562,7 +564,7 @@ def analizar_video(ruta, progreso=None):
                  forma_media=None, progresion=None, protraccion=None, desviaciones={}, consejos=[],
                  serie_t=[], serie_forma=[], mejor=None, peor=None)
 
-        if r["soportada"] and criterios(skill):
+        if r["seguro"] and r["soportada"]:
             prot = None
             if es_planche(skill) and modelo_prot is not None:
                 vals = [predecir_protraccion(leer_fotograma(cap, d["idx"]), d["p"], d["s"]) for d in _repartidos(h, N_PROT)]

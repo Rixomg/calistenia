@@ -33,9 +33,10 @@ def iniciar():
 
 def cabecera_skill(r):
     if not r["seguro"]:
-        st.warning(f"No estoy seguro de qué skill es (lo más parecido: {bonito(r['skill'])}, {r['confianza']:.0%}).")
+        st.warning(f"No reconozco esta skill con seguridad (lo más parecido: {bonito(r['skill'])}), así que no te pongo nota. "
+                   "Prueba con un vídeo de lado, con el cuerpo entero y buena luz.")
     elif not r["soportada"]:
-        st.info(f"Parece **{bonito(r['skill'])}**. De momento solo analizo la forma de **planche** y **front lever**.")
+        st.info(f"Parece **{bonito(r['skill'])}**. De esta skill todavía no sé puntuar la forma.")
 
 
 NOMBRE_CRITERIO = {
@@ -44,6 +45,7 @@ NOMBRE_CRITERIO = {
     "codo doblado": "Codo: cuánto se dobla",
     "codo no a 90°": "Codo: distancia a 90°",
     "cabeza fuera de línea": "Cabeza: cuánto se sale de la línea",
+    "rodilla doblada": "Rodilla: cuánto se dobla",
 }
 
 LEYENDA = """
@@ -76,7 +78,7 @@ def mostrar_consejos(lista):
 
 # ---------------------------------------------------------------------
 st.title("🤸 CalistenIA")
-st.caption("Sube un vídeo o una foto de tu **planche** o **front lever**: te digo qué progresión es, "
+st.caption("Sube un vídeo o una foto de tu **planche**, **front lever** o **90 hold**: te digo qué progresión es, "
            "cuánto aguantas y cómo de limpia es tu forma.")
 
 with st.spinner("Cargando modelos (la primera vez tarda un poco)..."):
@@ -93,7 +95,10 @@ tab_video, tab_foto = st.tabs(["🎥 Vídeo", "📷 Foto"])
 
 # ---------------------------------------------------------------------
 with tab_video:
-    archivo = st.file_uploader("Sube un vídeo", type=["mp4", "mov", "avi", "mkv", "webm"], key="video")
+    archivo = st.file_uploader("Sube un vídeo", key="video")      # sin filtro: en Android abre el selector de Archivos
+    if archivo and not archivo.name.lower().endswith((".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".3gp")):
+        st.error("Eso no parece un vídeo. Sube un .mp4 o .mov.")
+        archivo = None
     if archivo and st.button("Analizar vídeo", type="primary"):
         with tempfile.NamedTemporaryFile(suffix=os.path.splitext(archivo.name)[1], delete=False) as tmp:
             tmp.write(archivo.read())
@@ -149,7 +154,10 @@ with tab_video:
 
 # ---------------------------------------------------------------------
 with tab_foto:
-    archivo = st.file_uploader("Sube una foto", type=["jpg", "jpeg", "png", "webp"], key="foto")
+    archivo = st.file_uploader("Sube una foto", key="foto")
+    if archivo and not archivo.name.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+        st.error("Eso no parece una foto. Sube un .jpg o .png.")
+        archivo = None
     if archivo:
         img = cv2.imdecode(np.frombuffer(archivo.read(), np.uint8), cv2.IMREAD_COLOR)
         with st.spinner("Analizando..."):
