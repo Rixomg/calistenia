@@ -1,0 +1,1 @@
+Pon aquí: calistenia_modelo_v2.joblib, calistenia_imagen.pt, calistenia_protraccion.joblib

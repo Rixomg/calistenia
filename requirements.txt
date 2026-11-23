@@ -1,0 +1,14 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+transformers
+rtmlib
+onnxruntime
+opencv-python-headless
+numpy==VERSIÓN
+pandas
+pillow
+joblib
+# ⚠️ Pon aquí la MISMA versión de scikit-learn con la que entrenaste (en el cuaderno: import sklearn; sklearn.__version__)
+scikit-learn==VERSIÓN
+streamlit
+huggingface_hub
