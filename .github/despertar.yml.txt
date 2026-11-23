@@ -1,0 +1,31 @@
+name: Mantener la app despierta
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"     # cada 6 horas (a y 17 de la hora)
+  workflow_dispatch:            # y a mano, desde la pestaña Actions
+
+jobs:
+  visitar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright && playwright install --with-deps chromium
+      - name: Abrir la app
+        run: |
+          python - <<'EOF'
+          import re
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as p:
+              pagina = p.chromium.launch().new_page()
+              pagina.goto("https://calisten-ia.streamlit.app", timeout=120_000)
+              boton = pagina.get_by_role("button", name=re.compile("get this app back up"))
+              try:
+                  boton.click(timeout=20_000)
+                  print("Estaba dormida: la despierto")
+              except Exception:
+                  print("Ya estaba despierta")
+              pagina.wait_for_timeout(90_000)   # se queda 90 s para que cuente como visita
+          EOF
