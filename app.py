@@ -2,6 +2,7 @@
 import os
 import tempfile
 
+import altair as alt
 import cv2
 import numpy as np
 import pandas as pd
@@ -141,8 +142,13 @@ with tab_video:
                     st.markdown("**Forma segundo a segundo**")
                     st.caption("Tu nota de forma (0-100) en cada momento del hold. Si cae al final, "
                                "estás perdiendo la posición por cansancio.")
-                    st.line_chart(pd.DataFrame({"forma": r["serie_forma"]}, index=pd.Index(r["serie_t"], name="segundo")),
-                                  x_label="segundo del vídeo", y_label="forma (0-100)")
+                    datos = pd.DataFrame({"segundo": r["serie_t"], "forma": r["serie_forma"]})
+                    grafica = alt.Chart(datos).mark_line(point=True).encode(
+                        x=alt.X("segundo:Q", title="segundo del vídeo", scale=alt.Scale(zero=False)),
+                        y=alt.Y("forma:Q", title="forma (0-100)", scale=alt.Scale(domain=[0, 100])),
+                        tooltip=[alt.Tooltip("segundo:Q", format=".1f"), alt.Tooltip("forma:Q", format=".1f")],
+                    )                                   # sin .interactive(): no se mueve al hacer scroll en el móvil
+                    st.altair_chart(grafica, width="stretch")
                     st.markdown("**Cuánto te alejas de la posición ideal**")
                     st.caption("En grados: **0° = perfecto**. Media de todo el hold, y en tu mejor y tu peor momento.")
                     tabla = pd.DataFrame(r["desviaciones"], index=["Media", "Mejor momento", "Peor momento"]).T.round(1)

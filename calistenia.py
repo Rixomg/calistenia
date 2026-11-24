@@ -9,6 +9,7 @@ Uso:
 
 Todo lo que se ajusta está en el bloque PARÁMETROS.
 """
+import gc
 import os
 import cv2
 import joblib
@@ -24,8 +25,7 @@ from transformers import AutoImageProcessor, AutoModel
 # =====================================================================
 # --- Clasificación ---
 PESO_IMG = 0.5            # peso del modelo de imagen al combinar con la pose (0 = solo pose)
-UMBRAL_CONF = 0.28       # por debajo de esta probabilidad, "no estoy seguro de qué skill es"
-
+UMBRAL_CONF = 0.25        # por debajo de esta probabilidad, "no estoy seguro de qué skill es"
 # --- Vídeo ---
 MAX_SEGUNDOS = 30         # solo se analizan los primeros N segundos
 FPS_ANALISIS = 3          # fotogramas analizados por segundo
@@ -90,6 +90,7 @@ def cargar(carpeta="modelos"):
     body = Wholebody(mode="balanced", backend="onnxruntime", device="cpu")
     processor = AutoImageProcessor.from_pretrained("facebook/dinov2-base")
     dino = AutoModel.from_pretrained("facebook/dinov2-base").to(DEVICE).eval()
+    dino = torch.quantization.quantize_dynamic(dino, {nn.Linear}, dtype=torch.qint8)   # 8 bits: 4 veces menos memoria
 
     general = joblib.load(os.path.join(carpeta, "calistenia_modelo_v2.joblib"))["general"]
 
@@ -104,6 +105,7 @@ def cargar(carpeta="modelos"):
             mod_img = ModeloImagen(ck["nombre"], len(clases_img)).to(DEVICE)
             mod_img.load_state_dict(ck["estado"])
             mod_img.eval()
+            mod_img = torch.quantization.quantize_dynamic(mod_img, {nn.Linear}, dtype=torch.qint8)
             orden_img = [clases_img.index(c) for c in general.classes_]
 
     ruta_prot = os.path.join(carpeta, "calistenia_protraccion.joblib")
@@ -607,5 +609,6 @@ def analizar_video(ruta, progreso=None):
             progreso(0.8 + 0.2 * (k + 1) / len(holds))
 
     cap.release()
+    gc.collect()                                  # libera memoria después de cada vídeo
     return dict(ok=True, holds=resultado, giro=giro,
                 segundos=idxs[-1] / fps, recortado=fotogramas > total)
