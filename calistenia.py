@@ -90,7 +90,7 @@ def cargar(carpeta="modelos"):
     body = Wholebody(mode="balanced", backend="onnxruntime", device="cpu")
     processor = AutoImageProcessor.from_pretrained("facebook/dinov2-base")
     dino = AutoModel.from_pretrained("facebook/dinov2-base").to(DEVICE).eval()
-    dino = torch.quantization.quantize_dynamic(dino, {nn.Linear}, dtype=torch.qint8)   # 8 bits: 4 veces menos memoria
+    
 
     general = joblib.load(os.path.join(carpeta, "calistenia_modelo_v2.joblib"))["general"]
 
