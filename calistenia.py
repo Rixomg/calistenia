@@ -162,10 +162,12 @@ def restar_giros(a, b):
 
 
 def orientacion_escena(muestras, H, W, fotos=()):
-    """Si el vídeo/foto está grabado de lado, hacia dónde hay que girarlo.
-    1) La POSE decide SI está de lado: con el cuerpo en horizontal se reconoce mucho mejor una skill.
-    2) La IMAGEN decide HACIA DÓNDE: girado a un lado queda derecho y al otro boca abajo, y una planche
-       boca abajo tiene la misma geometría que un front lever. Solo la imagen (suelo, paredes) lo distingue."""
+    """Si el vídeo/foto está grabado de lado, hacia dónde hay que girarlo. Es MUY prudente:
+    un vídeo normal nunca se gira. Solo se gira si se cumplen las tres cosas:
+    1) Derecho, la pose no reconoce ninguna skill.
+    2) Girado, la pose sí la reconoce, y claramente mejor.
+    3) El modelo de imagen también lo ve mejor girado que derecho. Además decide HACIA DÓNDE,
+       porque una planche boca abajo tiene la misma geometría que un front lever."""
     muestras = [(p, s) for p, s in muestras if p is not None]
     if not muestras:
         return "0"
@@ -174,13 +176,16 @@ def orientacion_escena(muestras, H, W, fotos=()):
     for g in ("0", "cw", "ccw"):
         X = [rasgos_pose(girar_puntos(p, g, H, W), s) for p, s in muestras]
         puntos[g] = float(general.predict_proba(X)[:, otras].max(1).mean())
+    if puntos["0"] >= UMBRAL_CONF:                       # derecho ya se reconoce: no se toca
+        return "0"
     if max(puntos["cw"], puntos["ccw"]) <= puntos["0"] + VENTAJA_DERECHO:
-        return "0"                                   # no está de lado
+        return "0"                                       # girado no mejora: no está de lado
     fotos = [f for f in fotos if f is not None][:FOTOS_LADO]
-    if mod_img is not None and fotos:
-        img = {g: float(np.mean([prob_imagen(girar(f, g))[otras].max() for f in fotos])) for g in ("cw", "ccw")}
-        return max(img, key=img.get)
-    return max(("cw", "ccw"), key=puntos.get)       # sin modelo de imagen: mejor intento con la pose
+    if mod_img is None or not fotos:
+        return max(("cw", "ccw"), key=puntos.get)
+    img = {g: float(np.mean([prob_imagen(girar(f, g))[otras].max() for f in fotos])) for g in ("0", "cw", "ccw")}
+    mejor = max(("cw", "ccw"), key=img.get)
+    return mejor if img[mejor] > img["0"] else "0"     # la imagen también tiene que verlo mejor girado
 
 
 def detectar_con_giro(img, giro):

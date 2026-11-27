@@ -8,7 +8,27 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-import calistenia as cal
+import calistenia as _cal_modelos
+import types
+
+RUTA_CAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calistenia.py")
+MODELOS = ("body", "processor", "dino", "general", "mod_img", "orden_img", "modelo_prot")
+
+
+@st.cache_resource(show_spinner=False)
+def cargar_modelos():
+    """Los modelos se cargan UNA vez y se quedan en memoria."""
+    _cal_modelos.cargar(os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos"))
+    return {k: getattr(_cal_modelos, k) for k in MODELOS}
+
+
+def codigo_actual():
+    """El código de calistenia.py se lee de nuevo en cada carga de la página, así cualquier cambio
+    subido a GitHub se aplica solo, sin Reboot. Los modelos no se recargan: se reutilizan."""
+    m = types.ModuleType("calistenia_actual")
+    m.__file__ = RUTA_CAL
+    exec(compile(open(RUTA_CAL, encoding="utf-8").read(), RUTA_CAL, "exec"), m.__dict__)
+    return m
 
 st.set_page_config(page_title="CalistenIA", page_icon="🤸", layout="wide")
 
@@ -26,10 +46,6 @@ def bonito(skill):
     return (skill or "?").replace("_", " ").capitalize()
 
 
-@st.cache_resource(show_spinner=False)
-def iniciar():
-    cal.cargar(os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos"))
-    return True
 
 
 def cabecera_skill(r):
@@ -83,7 +99,8 @@ st.caption("Sube un vídeo o una foto de tu **planche**, **front lever** o **90 
            "cuánto aguantas y cómo de limpia es tu forma.")
 
 with st.spinner("Cargando modelos (la primera vez tarda un poco)..."):
-    iniciar()
+    cal = codigo_actual()
+    cal.__dict__.update(cargar_modelos())
 
 with st.expander("📏 Cómo grabarte para que funcione bien"):
     st.markdown(
