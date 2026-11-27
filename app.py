@@ -8,7 +8,17 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+import hashlib
+import importlib
+
 import calistenia as cal
+
+# Streamlit Cloud recarga app.py al hacer push, pero deja calistenia.py viejo en memoria.
+# Si calistenia.py ha cambiado, lo recargamos aquí: así nunca hace falta Reboot.
+_VERSION_CAL = hashlib.md5(open(cal.__file__, "rb").read()).hexdigest()
+if getattr(cal, "_VERSION", None) != _VERSION_CAL:
+    cal = importlib.reload(cal)
+    cal._VERSION = _VERSION_CAL
 
 st.set_page_config(page_title="CalistenIA", page_icon="🤸", layout="wide")
 
@@ -27,7 +37,7 @@ def bonito(skill):
 
 
 @st.cache_resource(show_spinner=False)
-def iniciar():
+def iniciar(version):
     cal.cargar(os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos"))
     return True
 
@@ -78,12 +88,12 @@ def mostrar_consejos(lista):
 
 
 # ---------------------------------------------------------------------
-st.title("🤸 CalistenIA")
+st.title("🤸 CalistenIA  ·  beta")
 st.caption("Sube un vídeo o una foto de tu **planche**, **front lever** o **90 hold**: te digo qué progresión es, "
            "cuánto aguantas y cómo de limpia es tu forma.")
 
 with st.spinner("Cargando modelos (la primera vez tarda un poco)..."):
-    iniciar()
+    iniciar(_VERSION_CAL)
 
 with st.expander("📏 Cómo grabarte para que funcione bien"):
     st.markdown(
@@ -102,6 +112,8 @@ tab_video, tab_foto = st.tabs(["🎥 Vídeo", "📷 Foto"])
 # ---------------------------------------------------------------------
 with tab_video:
     archivo = st.file_uploader("Sube un vídeo", key="video")      # sin filtro: en Android abre el selector de Archivos
+    if not archivo:
+        st.caption("📱 Desde el móvil, si eliges el vídeo y no aparece, vuelve a elegirlo: a la segunda se queda.")
     if archivo and not archivo.name.lower().endswith((".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".3gp")):
         st.error("Eso no parece un vídeo. Sube un .mp4 o .mov.")
         archivo = None
@@ -170,6 +182,8 @@ with tab_video:
 # ---------------------------------------------------------------------
 with tab_foto:
     archivo = st.file_uploader("Sube una foto", key="foto")
+    if not archivo:
+        st.caption("📱 Desde el móvil, si eliges la foto y no aparece, vuelve a elegirla: a la segunda se queda.")
     if archivo and not archivo.name.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
         st.error("Eso no parece una foto. Sube un .jpg o .png.")
         archivo = None
