@@ -116,6 +116,8 @@ with tab_video:
         elif not res["holds"]:
             st.warning("No encuentro ningún hold. Comprueba que se te vea entero y que aguantes al menos 1-2 segundos.")
         else:
+            if res.get("enderezado"):
+                st.info("Tu vídeo estaba grabado de lado: lo he enderezado antes de analizarlo.")
             if res["recortado"]:
                 st.info(f"El vídeo es largo: he analizado los primeros {cal.MAX_SEGUNDOS} segundos.")
             for n, r in enumerate(res["holds"], 1):
