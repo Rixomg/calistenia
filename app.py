@@ -8,27 +8,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-import calistenia as _cal_modelos
-import types
-
-RUTA_CAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calistenia.py")
-MODELOS = ("body", "processor", "dino", "general", "mod_img", "orden_img", "modelo_prot")
-
-
-@st.cache_resource(show_spinner=False)
-def cargar_modelos():
-    """Los modelos se cargan UNA vez y se quedan en memoria."""
-    _cal_modelos.cargar(os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos"))
-    return {k: getattr(_cal_modelos, k) for k in MODELOS}
-
-
-def codigo_actual():
-    """El código de calistenia.py se lee de nuevo en cada carga de la página, así cualquier cambio
-    subido a GitHub se aplica solo, sin Reboot. Los modelos no se recargan: se reutilizan."""
-    m = types.ModuleType("calistenia_actual")
-    m.__file__ = RUTA_CAL
-    exec(compile(open(RUTA_CAL, encoding="utf-8").read(), RUTA_CAL, "exec"), m.__dict__)
-    return m
+import calistenia as cal
 
 st.set_page_config(page_title="CalistenIA", page_icon="🤸", layout="wide")
 
@@ -46,6 +26,10 @@ def bonito(skill):
     return (skill or "?").replace("_", " ").capitalize()
 
 
+@st.cache_resource(show_spinner=False)
+def iniciar():
+    cal.cargar(os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos"))
+    return True
 
 
 def cabecera_skill(r):
@@ -94,13 +78,12 @@ def mostrar_consejos(lista):
 
 
 # ---------------------------------------------------------------------
-st.title("🤸 CalistenIA  ·  beta")
+st.title("🤸 CalistenIA")
 st.caption("Sube un vídeo o una foto de tu **planche**, **front lever** o **90 hold**: te digo qué progresión es, "
            "cuánto aguantas y cómo de limpia es tu forma.")
 
 with st.spinner("Cargando modelos (la primera vez tarda un poco)..."):
-    cal = codigo_actual()
-    cal.__dict__.update(cargar_modelos())
+    iniciar()
 
 with st.expander("📏 Cómo grabarte para que funcione bien"):
     st.markdown(
@@ -109,18 +92,11 @@ with st.expander("📏 Cómo grabarte para que funcione bien"):
         "- **Buena luz**, sin contraluz.\n"
         f"- En vídeo se analizan los primeros **{cal.MAX_SEGUNDOS} segundos**.")
 
-ORIENTACIONES = {"Automática": None, "Girar 90° a la derecha": "cw", "Girar 90° a la izquierda": "ccw", "No girar": "0"}
-orientacion = ORIENTACIONES[st.selectbox(
-    "Orientación", list(ORIENTACIONES),
-    help="Si tu vídeo está grabado de lado y la app lo gira mal (por ejemplo, te detecta front lever en vez de planche), elígela tú.")]
-
 tab_video, tab_foto = st.tabs(["🎥 Vídeo", "📷 Foto"])
 
 # ---------------------------------------------------------------------
 with tab_video:
     archivo = st.file_uploader("Sube un vídeo", key="video")      # sin filtro: en Android abre el selector de Archivos
-    if not archivo:
-        st.caption("📱 Desde el móvil, si eliges el vídeo y no aparece, vuelve a elegirlo: a la segunda se queda.")
     if archivo and not archivo.name.lower().endswith((".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".3gp")):
         st.error("Eso no parece un vídeo. Sube un .mp4 o .mov.")
         archivo = None
@@ -130,8 +106,7 @@ with tab_video:
             ruta = tmp.name
         barra = st.progress(0.0, text="Analizando...")
         try:
-            res = cal.analizar_video(ruta, progreso=lambda x: barra.progress(min(x, 1.0), text=f"Analizando... {x:.0%}"),
-                                     orientacion=orientacion)
+            res = cal.analizar_video(ruta, progreso=lambda x: barra.progress(min(x, 1.0), text=f"Analizando... {x:.0%}"))
         finally:
             os.remove(ruta)                       # el vídeo no se guarda
         barra.empty()
@@ -141,9 +116,6 @@ with tab_video:
         elif not res["holds"]:
             st.warning("No encuentro ningún hold. Comprueba que se te vea entero y que aguantes al menos 1-2 segundos.")
         else:
-            if res.get("enderezado"):
-                st.info("Tu vídeo estaba grabado de lado: lo he enderezado antes de analizarlo. "
-                        "Si sale al revés (front lever en vez de planche o al contrario), cambia la **Orientación** de arriba.")
             if res["recortado"]:
                 st.info(f"El vídeo es largo: he analizado los primeros {cal.MAX_SEGUNDOS} segundos.")
             for n, r in enumerate(res["holds"], 1):
@@ -189,15 +161,13 @@ with tab_video:
 # ---------------------------------------------------------------------
 with tab_foto:
     archivo = st.file_uploader("Sube una foto", key="foto")
-    if not archivo:
-        st.caption("📱 Desde el móvil, si eliges la foto y no aparece, vuelve a elegirla: a la segunda se queda.")
     if archivo and not archivo.name.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
         st.error("Eso no parece una foto. Sube un .jpg o .png.")
         archivo = None
     if archivo:
         img = cv2.imdecode(np.frombuffer(archivo.read(), np.uint8), cv2.IMREAD_COLOR)
         with st.spinner("Analizando..."):
-            r = cal.analizar_foto(img, orientacion=orientacion)
+            r = cal.analizar_foto(img)
         if not r["ok"]:
             st.error(r["mensaje"])
         else:

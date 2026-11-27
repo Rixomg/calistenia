@@ -25,8 +25,7 @@ from transformers import AutoImageProcessor, AutoModel
 # =====================================================================
 # --- Clasificación ---
 PESO_IMG = 0.5            # peso del modelo de imagen al combinar con la pose (0 = solo pose)
-UMBRAL_CONF = 0.30        # por debajo de esta probabilidad, "no estoy seguro de qué skill es"
-
+UMBRAL_CONF = 0.25        # por debajo de esta probabilidad, "no estoy seguro de qué skill es"
 # --- Vídeo ---
 MAX_SEGUNDOS = 30         # solo se analizan los primeros N segundos
 FPS_ANALISIS = 3          # fotogramas analizados por segundo
@@ -34,9 +33,7 @@ DET_CADA = 10             # buscar a la persona (lento) solo 1 de cada N fotogra
 UMBRAL_MOV = 0.08         # cuánto se puede mover el cuerpo (en torsos) entre fotogramas y seguir siendo hold
 MIN_HOLD = 1.0            # segundos mínimos para contar como hold (después de recortar)
 RECORTE = 0.4             # segundos que se quitan al principio y al final de cada hold
-FOTOS_GIRO = 5            # fotogramas usados para decidir la orientación del vídeo
-VENTAJA_DERECHO = 0.10    # para girar el vídeo, la otra orientación tiene que ganar por al menos esto
-FOTOS_LADO = 2            # fotogramas que mira el modelo de imagen para saber hacia qué lado girar
+FOTOS_GIRO = 2            # fotogramas usados para decidir la orientación del vídeo
 N_IMG = 5                 # fotogramas por hold que pasan por el modelo de imagen
 N_PROT = 3                # fotogramas por hold que pasan por el modelo de protracción
 
@@ -93,6 +90,7 @@ def cargar(carpeta="modelos"):
     body = Wholebody(mode="balanced", backend="onnxruntime", device="cpu")
     processor = AutoImageProcessor.from_pretrained("facebook/dinov2-base")
     dino = AutoModel.from_pretrained("facebook/dinov2-base").to(DEVICE).eval()
+    
 
     general = joblib.load(os.path.join(carpeta, "calistenia_modelo_v2.joblib"))["general"]
 
@@ -126,66 +124,17 @@ def _detectar(img_bgr):
     return kps[i], scores[i], scores[i, 5:17].mean()
 
 
-GIROS = {"0": 0, "cw": 1, "180": 2, "ccw": 3}          # en cuartos de vuelta, sentido horario
-_CV = {"cw": cv2.ROTATE_90_CLOCKWISE, "180": cv2.ROTATE_180, "ccw": cv2.ROTATE_90_COUNTERCLOCKWISE}
-
-
 def girar(img, giro):
-    return img if giro == "0" else cv2.rotate(img, _CV[giro])
-
-
-def girar_puntos(p, giro, H, W):
-    # Dónde caen los puntos de una foto H x W cuando la foto se gira con girar()
     if giro == "0":
-        return p
-    x, y = p[:, 0], p[:, 1]
-    if giro == "cw":
-        return np.stack([H - 1 - y, x], 1)
-    if giro == "ccw":
-        return np.stack([y, W - 1 - x], 1)
-    return np.stack([W - 1 - x, H - 1 - y], 1)
+        return img
+    return cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE if giro == "cw" else cv2.ROTATE_90_COUNTERCLOCKWISE)
 
 
 def desgirar(p, giro, H, W):
-    # Devuelve los puntos de la imagen girada a la foto original (H x W)
+    # Devuelve los puntos de la imagen girada a la foto original
     if giro == "0":
         return p
-    inverso = {"cw": "ccw", "ccw": "cw", "180": "180"}[giro]
-    Hg, Wg = (W, H) if giro in ("cw", "ccw") else (H, W)    # tamaño de la imagen girada
-    return girar_puntos(p, inverso, Hg, Wg)
-
-
-def restar_giros(a, b):
-    # Giro que queda por aplicar a una imagen ya girada b para llegar al giro total a
-    inv = {v: k for k, v in GIROS.items()}
-    return inv[(GIROS[a] - GIROS[b]) % 4]
-
-
-def orientacion_escena(muestras, H, W, fotos=()):
-    """Si el vídeo/foto está grabado de lado, hacia dónde hay que girarlo. Es MUY prudente:
-    un vídeo normal nunca se gira. Solo se gira si se cumplen las tres cosas:
-    1) Derecho, la pose no reconoce ninguna skill.
-    2) Girado, la pose sí la reconoce, y claramente mejor.
-    3) El modelo de imagen también lo ve mejor girado que derecho. Además decide HACIA DÓNDE,
-       porque una planche boca abajo tiene la misma geometría que un front lever."""
-    muestras = [(p, s) for p, s in muestras if p is not None]
-    if not muestras:
-        return "0"
-    otras = [i for i, c in enumerate(general.classes_) if c != "nada"]
-    puntos = {}
-    for g in ("0", "cw", "ccw"):
-        X = [rasgos_pose(girar_puntos(p, g, H, W), s) for p, s in muestras]
-        puntos[g] = float(general.predict_proba(X)[:, otras].max(1).mean())
-    if puntos["0"] >= UMBRAL_CONF:                       # derecho ya se reconoce: no se toca
-        return "0"
-    if max(puntos["cw"], puntos["ccw"]) <= puntos["0"] + VENTAJA_DERECHO:
-        return "0"                                       # girado no mejora: no está de lado
-    fotos = [f for f in fotos if f is not None][:FOTOS_LADO]
-    if mod_img is None or not fotos:
-        return max(("cw", "ccw"), key=puntos.get)
-    img = {g: float(np.mean([prob_imagen(girar(f, g))[otras].max() for f in fotos])) for g in ("0", "cw", "ccw")}
-    mejor = max(("cw", "ccw"), key=img.get)
-    return mejor if img[mejor] > img["0"] else "0"     # la imagen también tiene que verlo mejor girado
+    return np.stack([p[:, 1], H - 1 - p[:, 0]], 1) if giro == "cw" else np.stack([W - 1 - p[:, 1], p[:, 0]], 1)
 
 
 def detectar_con_giro(img, giro):
@@ -481,15 +430,10 @@ def top3(probs):
 # =====================================================================
 # FOTO
 # =====================================================================
-def analizar_foto(img_bgr, orientacion=None):
-    """orientacion: None = automática; "0", "cw" o "ccw" para forzarla."""
+def analizar_foto(img_bgr):
     p, s = persona_principal(img_bgr)
     if p is None:
         return dict(ok=False, mensaje="No encuentro a nadie en la foto.")
-    escena = orientacion if orientacion is not None else orientacion_escena([(p, s)], *img_bgr.shape[:2], fotos=[img_bgr])
-    if escena != "0":
-        p = girar_puntos(p, escena, *img_bgr.shape[:2])
-        img_bgr = girar(img_bgr, escena)
     pp = general.predict_proba([rasgos_pose(p, s)])[0]
     pc = combinar(pp, prob_imagen(img_bgr) if mod_img is not None else None)
     skill = general.classes_[pc.argmax()]
@@ -573,8 +517,8 @@ def _repartidos(h, n):
     return [h[i] for i in np.linspace(0, len(h) - 1, min(n, len(h))).astype(int)]
 
 
-def analizar_video(ruta, progreso=None, orientacion=None):
-    """Analiza un vídeo. progreso: función opcional (0 a 1). orientacion: None = automática; "0", "cw" o "ccw" para forzarla."""
+def analizar_video(ruta, progreso=None):
+    """Analiza un vídeo. progreso: función opcional que recibe un número de 0 a 1."""
     cap = cv2.VideoCapture(ruta)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     fotogramas = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -585,33 +529,18 @@ def analizar_video(ruta, progreso=None, orientacion=None):
         return dict(ok=False, mensaje="No puedo leer el vídeo.")
 
     # 1. Orientación, una vez para todo el vídeo
-    #    a) giro con el que el detector ve mejor el cuerpo
-    muestras_fr = [leer_fotograma(cap, i) for i in idxs[::max(1, len(idxs) // FOTOS_GIRO)][:FOTOS_GIRO]]
-    muestras_fr = [fr for fr in muestras_fr if fr is not None]
     conf = {"0": 0.0, "cw": 0.0, "ccw": 0.0}
-    detecciones = {g: [] for g in conf}
-    for fr in muestras_fr:
-        for g in conf:
-            p, s, c = detectar_con_giro(fr, g)
-            conf[g] += c
-            detecciones[g].append((p, s))
-    giro_det = max(conf, key=conf.get)
-    #    b) de qué lado está el suelo (vídeos grabados de lado): el vídeo se endereza
-    H, W = muestras_fr[0].shape[:2] if muestras_fr else (0, 0)
-    if orientacion is not None:
-        escena = orientacion
-    else:
-        escena = orientacion_escena(detecciones[giro_det], H, W, fotos=muestras_fr) if muestras_fr else "0"
-    giro = restar_giros(giro_det, escena)          # giro del detector sobre el vídeo ya enderezado
-
-    def leer(idx):
+    for idx in idxs[::max(1, len(idxs) // FOTOS_GIRO)][:FOTOS_GIRO]:
         fr = leer_fotograma(cap, idx)
-        return None if fr is None else girar(fr, escena)
+        if fr is not None:
+            for g in conf:
+                conf[g] += detectar_con_giro(fr, g)[2]
+    giro = max(conf, key=conf.get)
 
     # 2. Esqueleto de cada fotograma, siguiendo a la persona
     datos, caja = [], None
     for n, idx in enumerate(idxs):
-        fr = leer(idx)
+        fr = leer_fotograma(cap, idx)
         if fr is None:
             break
         if n % DET_CADA == 0:
@@ -628,7 +557,7 @@ def analizar_video(ruta, progreso=None, orientacion=None):
         pp = general.predict_proba(np.array([rasgos_pose(d["p"], d["s"]) for d in h])).mean(0)
         pi = None
         if mod_img is not None:
-            frs = [leer(d["idx"]) for d in _repartidos(h, N_IMG)]
+            frs = [leer_fotograma(cap, d["idx"]) for d in _repartidos(h, N_IMG)]
             pi = np.mean([prob_imagen(fr) for fr in frs if fr is not None], axis=0)
         pc = combinar(pp, pi)
         skill = general.classes_[pc.argmax()]
@@ -640,7 +569,7 @@ def analizar_video(ruta, progreso=None, orientacion=None):
         if r["seguro"] and r["soportada"]:
             prot = None
             if es_planche(skill) and modelo_prot is not None:
-                vals = [predecir_protraccion(leer(d["idx"]), d["p"], d["s"]) for d in _repartidos(h, N_PROT)]
+                vals = [predecir_protraccion(leer_fotograma(cap, d["idx"]), d["p"], d["s"]) for d in _repartidos(h, N_PROT)]
                 prot = float(np.mean(vals))
             formas, progs, desv_todas = [], [], []
             for d in h:
@@ -659,7 +588,7 @@ def analizar_video(ruta, progreso=None, orientacion=None):
             cadera_alta = np.mean([d["cadera_alta"] for d in h]) > 0.5
 
             def foto(d):
-                fr = leer(d["idx"])
+                fr = leer_fotograma(cap, d["idx"])
                 prot_d = etiqueta_protraccion(predecir_protraccion(fr, d["p"], d["s"])) if prot is not None else None
                 img = cv2.cvtColor(dibujar_forma(fr, puntos_forma(d["p"], d["s"]), skill), cv2.COLOR_BGR2RGB)
                 return img, prot_d
@@ -681,5 +610,5 @@ def analizar_video(ruta, progreso=None, orientacion=None):
 
     cap.release()
     gc.collect()                                  # libera memoria después de cada vídeo
-    return dict(ok=True, holds=resultado, giro=giro, enderezado=escena != "0",
+    return dict(ok=True, holds=resultado, giro=giro,
                 segundos=idxs[-1] / fps, recortado=fotogramas > total)
