@@ -36,6 +36,7 @@ MIN_HOLD = 1.0            # segundos mínimos para contar como hold (después de
 RECORTE = 0.4             # segundos que se quitan al principio y al final de cada hold
 FOTOS_GIRO = 5            # fotogramas usados para decidir la orientación del vídeo
 VENTAJA_DERECHO = 0.10    # para girar el vídeo, la otra orientación tiene que ganar por al menos esto
+FOTOS_LADO = 2            # fotogramas que mira el modelo de imagen para saber hacia qué lado girar
 N_IMG = 5                 # fotogramas por hold que pasan por el modelo de imagen
 N_PROT = 3                # fotogramas por hold que pasan por el modelo de protracción
 
@@ -160,20 +161,26 @@ def restar_giros(a, b):
     return inv[(GIROS[a] - GIROS[b]) % 4]
 
 
-def orientacion_escena(muestras, H, W):
-    """De qué lado está el suelo: prueba las tres orientaciones con los esqueletos de unos fotogramas
-    y se queda con la que el modelo reconoce mejor como una skill (no "nada")."""
+def orientacion_escena(muestras, H, W, fotos=()):
+    """Si el vídeo/foto está grabado de lado, hacia dónde hay que girarlo.
+    1) La POSE decide SI está de lado: con el cuerpo en horizontal se reconoce mucho mejor una skill.
+    2) La IMAGEN decide HACIA DÓNDE: girado a un lado queda derecho y al otro boca abajo, y una planche
+       boca abajo tiene la misma geometría que un front lever. Solo la imagen (suelo, paredes) lo distingue."""
     muestras = [(p, s) for p, s in muestras if p is not None]
     if not muestras:
         return "0"
-    clases = list(general.classes_)
-    otras = [i for i, c in enumerate(clases) if c != "nada"]
+    otras = [i for i, c in enumerate(general.classes_) if c != "nada"]
     puntos = {}
     for g in ("0", "cw", "ccw"):
         X = [rasgos_pose(girar_puntos(p, g, H, W), s) for p, s in muestras]
         puntos[g] = float(general.predict_proba(X)[:, otras].max(1).mean())
-    mejor = max(puntos, key=puntos.get)
-    return mejor if puntos[mejor] > puntos["0"] + VENTAJA_DERECHO else "0"
+    if max(puntos["cw"], puntos["ccw"]) <= puntos["0"] + VENTAJA_DERECHO:
+        return "0"                                   # no está de lado
+    fotos = [f for f in fotos if f is not None][:FOTOS_LADO]
+    if mod_img is not None and fotos:
+        img = {g: float(np.mean([prob_imagen(girar(f, g))[otras].max() for f in fotos])) for g in ("cw", "ccw")}
+        return max(img, key=img.get)
+    return max(("cw", "ccw"), key=puntos.get)       # sin modelo de imagen: mejor intento con la pose
 
 
 def detectar_con_giro(img, giro):
@@ -469,11 +476,12 @@ def top3(probs):
 # =====================================================================
 # FOTO
 # =====================================================================
-def analizar_foto(img_bgr):
+def analizar_foto(img_bgr, orientacion=None):
+    """orientacion: None = automática; "0", "cw" o "ccw" para forzarla."""
     p, s = persona_principal(img_bgr)
     if p is None:
         return dict(ok=False, mensaje="No encuentro a nadie en la foto.")
-    escena = orientacion_escena([(p, s)], *img_bgr.shape[:2])      # foto de lado: se endereza
+    escena = orientacion if orientacion is not None else orientacion_escena([(p, s)], *img_bgr.shape[:2], fotos=[img_bgr])
     if escena != "0":
         p = girar_puntos(p, escena, *img_bgr.shape[:2])
         img_bgr = girar(img_bgr, escena)
@@ -560,8 +568,8 @@ def _repartidos(h, n):
     return [h[i] for i in np.linspace(0, len(h) - 1, min(n, len(h))).astype(int)]
 
 
-def analizar_video(ruta, progreso=None):
-    """Analiza un vídeo. progreso: función opcional que recibe un número de 0 a 1."""
+def analizar_video(ruta, progreso=None, orientacion=None):
+    """Analiza un vídeo. progreso: función opcional (0 a 1). orientacion: None = automática; "0", "cw" o "ccw" para forzarla."""
     cap = cv2.VideoCapture(ruta)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     fotogramas = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -585,7 +593,10 @@ def analizar_video(ruta, progreso=None):
     giro_det = max(conf, key=conf.get)
     #    b) de qué lado está el suelo (vídeos grabados de lado): el vídeo se endereza
     H, W = muestras_fr[0].shape[:2] if muestras_fr else (0, 0)
-    escena = orientacion_escena(detecciones[giro_det], H, W) if muestras_fr else "0"
+    if orientacion is not None:
+        escena = orientacion
+    else:
+        escena = orientacion_escena(detecciones[giro_det], H, W, fotos=muestras_fr) if muestras_fr else "0"
     giro = restar_giros(giro_det, escena)          # giro del detector sobre el vídeo ya enderezado
 
     def leer(idx):

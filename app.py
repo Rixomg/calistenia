@@ -92,6 +92,11 @@ with st.expander("📏 Cómo grabarte para que funcione bien"):
         "- **Buena luz**, sin contraluz.\n"
         f"- En vídeo se analizan los primeros **{cal.MAX_SEGUNDOS} segundos**.")
 
+ORIENTACIONES = {"Automática": None, "Girar 90° a la derecha": "cw", "Girar 90° a la izquierda": "ccw", "No girar": "0"}
+orientacion = ORIENTACIONES[st.selectbox(
+    "Orientación", list(ORIENTACIONES),
+    help="Si tu vídeo está grabado de lado y la app lo gira mal (por ejemplo, te detecta front lever en vez de planche), elígela tú.")]
+
 tab_video, tab_foto = st.tabs(["🎥 Vídeo", "📷 Foto"])
 
 # ---------------------------------------------------------------------
@@ -106,7 +111,8 @@ with tab_video:
             ruta = tmp.name
         barra = st.progress(0.0, text="Analizando...")
         try:
-            res = cal.analizar_video(ruta, progreso=lambda x: barra.progress(min(x, 1.0), text=f"Analizando... {x:.0%}"))
+            res = cal.analizar_video(ruta, progreso=lambda x: barra.progress(min(x, 1.0), text=f"Analizando... {x:.0%}"),
+                                     orientacion=orientacion)
         finally:
             os.remove(ruta)                       # el vídeo no se guarda
         barra.empty()
@@ -117,7 +123,8 @@ with tab_video:
             st.warning("No encuentro ningún hold. Comprueba que se te vea entero y que aguantes al menos 1-2 segundos.")
         else:
             if res.get("enderezado"):
-                st.info("Tu vídeo estaba grabado de lado: lo he enderezado antes de analizarlo.")
+                st.info("Tu vídeo estaba grabado de lado: lo he enderezado antes de analizarlo. "
+                        "Si sale al revés (front lever en vez de planche o al contrario), cambia la **Orientación** de arriba.")
             if res["recortado"]:
                 st.info(f"El vídeo es largo: he analizado los primeros {cal.MAX_SEGUNDOS} segundos.")
             for n, r in enumerate(res["holds"], 1):
@@ -169,7 +176,7 @@ with tab_foto:
     if archivo:
         img = cv2.imdecode(np.frombuffer(archivo.read(), np.uint8), cv2.IMREAD_COLOR)
         with st.spinner("Analizando..."):
-            r = cal.analizar_foto(img)
+            r = cal.analizar_foto(img, orientacion=orientacion)
         if not r["ok"]:
             st.error(r["mensaje"])
         else:
