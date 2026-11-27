@@ -1,14 +1,19 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch
-transformers
-rtmlib
-onnxruntime
-opencv-python-headless
+# Todas las versiones fijadas: así la nube instala siempre lo mismo y un push no cambia librerías por sorpresa.
+# Son las que Streamlit Cloud instaló el 27/11/2026 (Python 3.14) y con las que la app cargó bien.
+torch==2.15.0
+transformers==5.24.1
+rtmlib==0.0.16
+onnxruntime==1.32.0
+opencv-python-headless==5.1.0.95
 numpy==2.5.5
-pandas
-pillow
-joblib
-# ⚠️ Pon aquí la MISMA versión de scikit-learn con la que entrenaste (en el cuaderno: import sklearn; sklearn.__version__)
+pandas==3.1.1
+pillow==13.0.0
+joblib==1.6.0
+# ⚠️ La MISMA versión de scikit-learn con la que se entrenaron los modelos .joblib
 scikit-learn==1.9.1
-streamlit
-huggingface_hub
+streamlit==1.67.0
+altair==6.3.0
+# pyarrow 25 y 26 tienen un segfault conocido (apache/arrow#50471); Streamlit lo usa para tablas y gráficas
+pyarrow==24.0.0
+huggingface_hub==2.5.0

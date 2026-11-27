@@ -78,7 +78,7 @@ def mostrar_consejos(lista):
 
 
 # ---------------------------------------------------------------------
-st.title("🤸 CalistenIA")
+st.title("🤸 CalistenIA  ·  beta")
 st.caption("Sube un vídeo o una foto de tu **planche**, **front lever** o **90 hold**: te digo qué progresión es, "
            "cuánto aguantas y cómo de limpia es tu forma.")
 
@@ -92,11 +92,20 @@ with st.expander("📏 Cómo grabarte para que funcione bien"):
         "- **Buena luz**, sin contraluz.\n"
         f"- En vídeo se analizan los primeros **{cal.MAX_SEGUNDOS} segundos**.")
 
+# El giro automático no distingue bien planche de front lever en vídeos de lado (probado con vídeos reales),
+# así que el usuario dice dónde queda el suelo. "cw" gira la imagen en sentido horario: el lado derecho pasa abajo.
+ORIENTACIONES = {"Normal": "0", "El suelo queda a la izquierda": "ccw", "El suelo queda a la derecha": "cw"}
+orientacion = ORIENTACIONES[st.selectbox(
+    "¿Dónde queda el suelo en tu vídeo o foto?", list(ORIENTACIONES),
+    help="Si grabaste con el móvil de lado y en la imagen el suelo no queda abajo, dime hacia qué lado queda y lo enderezo.")]
+
 tab_video, tab_foto = st.tabs(["🎥 Vídeo", "📷 Foto"])
 
 # ---------------------------------------------------------------------
 with tab_video:
     archivo = st.file_uploader("Sube un vídeo", key="video")      # sin filtro: en Android abre el selector de Archivos
+    if not archivo:
+        st.caption("📱 Desde el móvil, si eliges el vídeo y no aparece, vuelve a elegirlo: a la segunda se queda.")
     if archivo and not archivo.name.lower().endswith((".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".3gp")):
         st.error("Eso no parece un vídeo. Sube un .mp4 o .mov.")
         archivo = None
@@ -106,7 +115,8 @@ with tab_video:
             ruta = tmp.name
         barra = st.progress(0.0, text="Analizando...")
         try:
-            res = cal.analizar_video(ruta, progreso=lambda x: barra.progress(min(x, 1.0), text=f"Analizando... {x:.0%}"))
+            res = cal.analizar_video(ruta, progreso=lambda x: barra.progress(min(x, 1.0), text=f"Analizando... {x:.0%}"),
+                                     orientacion=orientacion)
         finally:
             os.remove(ruta)                       # el vídeo no se guarda
         barra.empty()
@@ -116,6 +126,9 @@ with tab_video:
         elif not res["holds"]:
             st.warning("No encuentro ningún hold. Comprueba que se te vea entero y que aguantes al menos 1-2 segundos.")
         else:
+            if res.get("enderezado"):
+                st.info("He enderezado el vídeo antes de analizarlo. Si sale al revés (front lever en vez de planche "
+                        "o al contrario), cambia arriba el lado donde queda el suelo.")
             if res["recortado"]:
                 st.info(f"El vídeo es largo: he analizado los primeros {cal.MAX_SEGUNDOS} segundos.")
             for n, r in enumerate(res["holds"], 1):
@@ -161,13 +174,15 @@ with tab_video:
 # ---------------------------------------------------------------------
 with tab_foto:
     archivo = st.file_uploader("Sube una foto", key="foto")
+    if not archivo:
+        st.caption("📱 Desde el móvil, si eliges la foto y no aparece, vuelve a elegirla: a la segunda se queda.")
     if archivo and not archivo.name.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
         st.error("Eso no parece una foto. Sube un .jpg o .png.")
         archivo = None
     if archivo:
         img = cv2.imdecode(np.frombuffer(archivo.read(), np.uint8), cv2.IMREAD_COLOR)
         with st.spinner("Analizando..."):
-            r = cal.analizar_foto(img)
+            r = cal.analizar_foto(img, orientacion=orientacion)
         if not r["ok"]:
             st.error(r["mensaje"])
         else:
