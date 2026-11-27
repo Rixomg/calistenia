@@ -25,7 +25,7 @@ from transformers import AutoImageProcessor, AutoModel
 # =====================================================================
 # --- Clasificación ---
 PESO_IMG = 0.5            # peso del modelo de imagen al combinar con la pose (0 = solo pose)
-UMBRAL_CONF = 0.25        # por debajo de esta probabilidad, "no estoy seguro de qué skill es"
+UMBRAL_CONF = 0.22        # por debajo de esta probabilidad, "no estoy seguro de qué skill es"
 
 # --- Vídeo ---
 MAX_SEGUNDOS = 30         # solo se analizan los primeros N segundos
