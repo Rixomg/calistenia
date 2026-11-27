@@ -8,17 +8,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-import hashlib
-import importlib
-
 import calistenia as cal
-
-# Streamlit Cloud recarga app.py al hacer push, pero deja calistenia.py viejo en memoria.
-# Si calistenia.py ha cambiado, lo recargamos aquí: así nunca hace falta Reboot.
-_VERSION_CAL = hashlib.md5(open(cal.__file__, "rb").read()).hexdigest()
-if getattr(cal, "_VERSION", None) != _VERSION_CAL:
-    cal = importlib.reload(cal)
-    cal._VERSION = _VERSION_CAL
 
 st.set_page_config(page_title="CalistenIA", page_icon="🤸", layout="wide")
 
@@ -37,7 +27,7 @@ def bonito(skill):
 
 
 @st.cache_resource(show_spinner=False)
-def iniciar(version):
+def iniciar():
     cal.cargar(os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos"))
     return True
 
@@ -93,7 +83,7 @@ st.caption("Sube un vídeo o una foto de tu **planche**, **front lever** o **90 
            "cuánto aguantas y cómo de limpia es tu forma.")
 
 with st.spinner("Cargando modelos (la primera vez tarda un poco)..."):
-    iniciar(_VERSION_CAL)
+    iniciar()
 
 with st.expander("📏 Cómo grabarte para que funcione bien"):
     st.markdown(
